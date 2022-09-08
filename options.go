@@ -22,6 +22,8 @@ import (
 	"google.golang.org/grpc/keepalive"
 )
 
+type DialHandle func(address string, timeoutSecond int, options ...grpc.DialOption) (*grpc.ClientConn, error)
+
 const (
 	// DialTimeout the timeout of create connection
 	DialTimeout = 5 * time.Second
@@ -56,7 +58,7 @@ const (
 // Options are params for creating grpc connect pool.
 type Options struct {
 	// Dial is an application supplied function for creating and configuring a connection.
-	Dial func(address string) (*grpc.ClientConn, error)
+	Dial DialHandle
 
 	// Maximum number of idle connections in the pool.
 	MaxIdle int
@@ -84,11 +86,24 @@ var DefaultOptions = Options{
 	Reuse:                true,
 }
 
+func NewOptions(dial DialHandle) Options {
+	if dial == nil {
+		panic("dial function is nil")
+	}
+	return Options{
+		Dial:                 dial,
+		MaxIdle:              8,
+		MaxActive:            64,
+		MaxConcurrentStreams: 64,
+		Reuse:                true,
+	}
+}
+
 // Dial return a grpc connection with defined configurations.
-func Dial(address string) (*grpc.ClientConn, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), DialTimeout)
+func Dial(address string, timeoutSecond int, options ...grpc.DialOption) (*grpc.ClientConn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(timeoutSecond))
 	defer cancel()
-	return grpc.DialContext(ctx, address, grpc.WithInsecure(),
+	opts := []grpc.DialOption{
 		grpc.WithBackoffMaxDelay(BackoffMaxDelay),
 		grpc.WithInitialWindowSize(InitialWindowSize),
 		grpc.WithInitialConnWindowSize(InitialConnWindowSize),
@@ -98,11 +113,18 @@ func Dial(address string) (*grpc.ClientConn, error) {
 			Time:                KeepAliveTime,
 			Timeout:             KeepAliveTimeout,
 			PermitWithoutStream: true,
-		}))
+		}),
+	}
+	if len(options) > 0 {
+		for _, v := range options {
+			opts = append(opts, v)
+		}
+	}
+	return grpc.DialContext(ctx, address, opts...)
 }
 
 // DialTest return a simple grpc connection with defined configurations.
-func DialTest(address string) (*grpc.ClientConn, error) {
+func DialTest(address string, timeoutSecond int, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), DialTimeout)
 	defer cancel()
 	return grpc.DialContext(ctx, address, grpc.WithInsecure())
