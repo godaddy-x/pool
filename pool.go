@@ -15,12 +15,15 @@
 package pool
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"google.golang.org/grpc"
 	"log"
 	"math"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // ErrClosed is the error resulting if the pool is closed via pool.Close().
@@ -97,6 +100,57 @@ func New(address string, option Options) (Pool, error) {
 
 	for i := 0; i < p.opt.MaxIdle; i++ {
 		c, err := p.opt.Dial(address)
+		if err != nil {
+			p.Close()
+			return nil, fmt.Errorf("dial is not able to fill the pool: %s", err)
+		}
+		p.conns[i] = p.wrapConn(c, false)
+	}
+	log.Printf("new pool success: %v\n", p.Status())
+
+	return p, nil
+}
+
+func newClientConn(address string, timeout int, opts []grpc.DialOption) (*grpc.ClientConn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+	conn, err := grpc.DialContext(ctx, address, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
+}
+
+// New return a connection pool.
+func NewPool(option Options, address string, timeout int, opts []grpc.DialOption) (Pool, error) {
+	if address == "" {
+		return nil, errors.New("invalid address settings")
+	}
+	if timeout == 0 {
+		return nil, errors.New("invalid timeout settings")
+	}
+	if opts == nil || len(opts) == 0 {
+		return nil, errors.New("invalid opts settings")
+	}
+	if option.MaxIdle <= 0 || option.MaxActive <= 0 || option.MaxIdle > option.MaxActive {
+		return nil, errors.New("invalid maximum settings")
+	}
+	if option.MaxConcurrentStreams <= 0 {
+		return nil, errors.New("invalid maximun settings")
+	}
+
+	p := &pool{
+		index:   0,
+		current: int32(option.MaxIdle),
+		ref:     0,
+		opt:     option,
+		conns:   make([]*conn, option.MaxActive),
+		address: address,
+		closed:  0,
+	}
+
+	for i := 0; i < p.opt.MaxIdle; i++ {
+		c, err := newClientConn(address, timeout, opts)
 		if err != nil {
 			p.Close()
 			return nil, fmt.Errorf("dial is not able to fill the pool: %s", err)
