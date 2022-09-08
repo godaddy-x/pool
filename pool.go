@@ -111,7 +111,7 @@ func New(address string, option Options) (Pool, error) {
 	return p, nil
 }
 
-func newClientConn(address string, timeout int, opts []grpc.DialOption) (*grpc.ClientConn, error) {
+func NewClientConn(address string, timeout int, opts []grpc.DialOption) (*grpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
 	conn, err := grpc.DialContext(ctx, address, opts...)
@@ -150,7 +150,7 @@ func NewPool(option Options, address string, timeout int, opts []grpc.DialOption
 	}
 
 	for i := 0; i < p.opt.MaxIdle; i++ {
-		c, err := newClientConn(address, timeout, opts)
+		c, err := NewClientConn(address, timeout, opts)
 		if err != nil {
 			p.Close()
 			return nil, fmt.Errorf("dial is not able to fill the pool: %s", err)
