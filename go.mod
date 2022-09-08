@@ -1,4 +1,4 @@
-module github.com/shimingyah/pool
+module github.com/godaddy-x/pool
 
 go 1.12
 
