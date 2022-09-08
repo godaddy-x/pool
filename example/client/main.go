@@ -21,8 +21,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/godaddy-x/pool"
-	"github.com/godaddy-x/pool/example/pb"
+	"github.com/shimingyah/pool"
+	"github.com/shimingyah/pool/example/pb"
 )
 
 var addr = flag.String("addr", "127.0.0.1:50000", "the address to connect to")

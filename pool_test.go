@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/godaddy-x/pool/example/pb"
+	"github.com/shimingyah/pool/example/pb"
 	"github.com/stretchr/testify/require"
 )
 
