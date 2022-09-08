@@ -276,7 +276,7 @@ func BenchmarkPoolRPC(b *testing.B) {
 
 func BenchmarkSingleRPC(b *testing.B) {
 	testFunc := func() {
-		cc, err := Dial(*endpoint, 5)
+		cc, err := Dial(*endpoint)
 		if err != nil {
 			b.Fatalf("failed to create grpc conn: %v", err)
 		}
