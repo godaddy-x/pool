@@ -31,7 +31,7 @@ type Conn interface {
 
 	Context() context.Context
 
-	NewContext(exp time.Duration)
+	NewContext(timeout ...time.Duration)
 }
 
 // Conn is wrapped grpc.ClientConn. to provide close and value method.
@@ -52,12 +52,12 @@ func (c *conn) Value() *grpc.ClientConn {
 func (c *conn) Close() error {
 	c.pool.decrRef()
 	if c.once {
-		if c.contextCancel != nil {
-			c.contextCancel()
-			c.context = nil
-			c.contextCancel = nil
-		}
 		return c.reset()
+	}
+	if c.contextCancel != nil {
+		c.contextCancel()
+		c.context = nil
+		c.contextCancel = nil
 	}
 	return nil
 }
@@ -68,8 +68,13 @@ func (c *conn) Context() context.Context {
 }
 
 // NewContext see Conn interface.
-func (c *conn) NewContext(exp time.Duration) {
-	ctx, cancel := context.WithTimeout(context.Background(), exp)
+func (c *conn) NewContext(timeout ...time.Duration) {
+	if len(timeout) == 0 {
+		c.context = context.Background()
+		c.contextCancel = nil
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout[0])
 	c.context = ctx
 	c.contextCancel = cancel
 }
