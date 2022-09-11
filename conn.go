@@ -15,7 +15,9 @@
 package pool
 
 import (
+	"context"
 	"google.golang.org/grpc"
+	"time"
 )
 
 // Conn single grpc connection inerface
@@ -26,13 +28,19 @@ type Conn interface {
 	// Close decrease the reference of grpc connection, instead of close it.
 	// if the pool is full, just close it.
 	Close() error
+
+	Context() context.Context
+
+	NewContext(exp time.Duration)
 }
 
 // Conn is wrapped grpc.ClientConn. to provide close and value method.
 type conn struct {
-	cc   *grpc.ClientConn
-	pool *pool
-	once bool
+	cc            *grpc.ClientConn
+	pool          *pool
+	once          bool
+	context       context.Context
+	contextCancel context.CancelFunc
 }
 
 // Value see Conn interface.
@@ -44,9 +52,26 @@ func (c *conn) Value() *grpc.ClientConn {
 func (c *conn) Close() error {
 	c.pool.decrRef()
 	if c.once {
+		if c.contextCancel != nil {
+			c.contextCancel()
+			c.context = nil
+			c.contextCancel = nil
+		}
 		return c.reset()
 	}
 	return nil
+}
+
+// Context see Conn interface.
+func (c *conn) Context() context.Context {
+	return c.context
+}
+
+// NewContext see Conn interface.
+func (c *conn) NewContext(exp time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), exp)
+	c.context = ctx
+	c.contextCancel = cancel
 }
 
 func (c *conn) reset() error {
