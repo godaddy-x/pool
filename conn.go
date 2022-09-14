@@ -51,13 +51,13 @@ func (c *conn) Value() *grpc.ClientConn {
 // Close see Conn interface.
 func (c *conn) Close() error {
 	c.pool.decrRef()
-	if c.once {
-		return c.reset()
-	}
 	if c.contextCancel != nil {
 		c.contextCancel()
 		c.context = nil
 		c.contextCancel = nil
+	}
+	if c.once {
+		return c.reset()
 	}
 	return nil
 }

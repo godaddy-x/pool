@@ -26,6 +26,12 @@ import (
 	"time"
 )
 
+type ConnConfig struct {
+	Opts    []grpc.DialOption
+	Timeout int
+	Address string
+}
+
 // ErrClosed is the error resulting if the pool is closed via pool.Close().
 var ErrClosed = errors.New("pool is closed")
 
@@ -71,6 +77,9 @@ type pool struct {
 
 	// control the atomic var current's concurrent read write.
 	sync.RWMutex
+
+	// connection config
+	connConfig ConnConfig
 }
 
 // New return a connection pool.
@@ -111,10 +120,10 @@ func New(address string, option Options) (Pool, error) {
 	return p, nil
 }
 
-func NewClientConn(address string, timeout int, opts []grpc.DialOption) (*grpc.ClientConn, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+func (p *pool) NewClientConn() (*grpc.ClientConn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(p.connConfig.Timeout)*time.Second)
 	defer cancel()
-	conn, err := grpc.DialContext(ctx, address, opts...)
+	conn, err := grpc.DialContext(ctx, p.connConfig.Address, p.connConfig.Opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -122,14 +131,14 @@ func NewClientConn(address string, timeout int, opts []grpc.DialOption) (*grpc.C
 }
 
 // New return a connection pool.
-func NewPool(option Options, address string, timeout int, opts []grpc.DialOption) (Pool, error) {
-	if address == "" {
+func NewPool(option Options, config ConnConfig) (Pool, error) {
+	if config.Address == "" {
 		return nil, errors.New("invalid address settings")
 	}
-	if timeout == 0 {
+	if config.Timeout == 0 {
 		return nil, errors.New("invalid timeout settings")
 	}
-	if opts == nil || len(opts) == 0 {
+	if config.Opts == nil || len(config.Opts) == 0 {
 		return nil, errors.New("invalid opts settings")
 	}
 	if option.MaxIdle <= 0 || option.MaxActive <= 0 || option.MaxIdle > option.MaxActive {
@@ -140,24 +149,25 @@ func NewPool(option Options, address string, timeout int, opts []grpc.DialOption
 	}
 
 	p := &pool{
-		index:   0,
-		current: int32(option.MaxIdle),
-		ref:     0,
-		opt:     option,
-		conns:   make([]*conn, option.MaxActive),
-		address: address,
-		closed:  0,
+		index:      0,
+		current:    int32(option.MaxIdle),
+		ref:        0,
+		opt:        option,
+		conns:      make([]*conn, option.MaxActive),
+		address:    config.Address,
+		closed:     0,
+		connConfig: config,
 	}
 
 	for i := 0; i < p.opt.MaxIdle; i++ {
-		c, err := NewClientConn(address, timeout, opts)
+		c, err := p.NewClientConn()
 		if err != nil {
 			p.Close()
 			return nil, fmt.Errorf("dial is not able to fill the pool: %s", err)
 		}
 		p.conns[i] = p.wrapConn(c, false)
 	}
-	log.Printf("new pool success: %v\n", p.Status())
+	log.Printf("new grpc client pool success: %v\n", p.Status())
 
 	return p, nil
 }
@@ -225,7 +235,8 @@ func (p *pool) Get() (Conn, error) {
 			return p.conns[next], nil
 		}
 		// the third create one-time connection
-		c, err := p.opt.Dial(p.address)
+		//c, err := p.opt.Dial(p.address)
+		c, err := p.NewClientConn()
 		return p.wrapConn(c, true), err
 	}
 
@@ -241,7 +252,8 @@ func (p *pool) Get() (Conn, error) {
 		var i int32
 		var err error
 		for i = 0; i < increment; i++ {
-			c, er := p.opt.Dial(p.address)
+			//c, er := p.opt.Dial(p.address)
+			c, er := p.NewClientConn()
 			if er != nil {
 				err = er
 				break
